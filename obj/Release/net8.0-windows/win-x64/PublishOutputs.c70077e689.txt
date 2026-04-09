@@ -1,0 +1,11 @@
+E:\Downloads\Games\GamelistScraper\publish\ESMetadataManager.exe
+E:\Downloads\Games\GamelistScraper\publish\ESMetadataManager.dll
+E:\Downloads\Games\GamelistScraper\publish\ESMetadataManager.deps.json
+E:\Downloads\Games\GamelistScraper\publish\ESMetadataManager.runtimeconfig.json
+E:\Downloads\Games\GamelistScraper\publish\ESMetadataManager.pdb
+E:\Downloads\Games\GamelistScraper\publish\CommunityToolkit.Mvvm.dll
+E:\Downloads\Games\GamelistScraper\publish\Microsoft.Data.Sqlite.dll
+E:\Downloads\Games\GamelistScraper\publish\SQLitePCLRaw.batteries_v2.dll
+E:\Downloads\Games\GamelistScraper\publish\SQLitePCLRaw.core.dll
+E:\Downloads\Games\GamelistScraper\publish\SQLitePCLRaw.provider.e_sqlite3.dll
+E:\Downloads\Games\GamelistScraper\publish\e_sqlite3.dll
