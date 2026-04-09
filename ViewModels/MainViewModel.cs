@@ -77,6 +77,7 @@ public partial class MainViewModel : ObservableObject
         _config = ScraperConfig.Load();
         _dispatcher = Dispatcher.CurrentDispatcher;
         Settings = new SettingsViewModel(_config);
+        Settings.SetStopScrapeAction(() => _cts?.Cancel());
 
         // Auto-detect on first launch
         if (string.IsNullOrEmpty(_config.ConfigPath))
@@ -84,6 +85,10 @@ public partial class MainViewModel : ObservableObject
             Settings.AutoDetectCommand.Execute(null);
             Settings.SaveCommand.Execute(null);
         }
+
+        // Auto-load systems if we have a config path
+        if (!string.IsNullOrEmpty(_config.ConfigPath))
+            LoadSystems();
     }
 
     [RelayCommand]
@@ -103,6 +108,12 @@ public partial class MainViewModel : ObservableObject
 
             foreach (var system in _frontend.Systems)
             {
+                // Skip systems with no ROMs
+                if (system.RomCount == 0)
+                    continue;
+
+                var scrapedCount = _cache.GetScrapedCount(system.Name);
+
                 Dictionary<MediaType, int>? mediaStatus = null;
                 if (!string.IsNullOrEmpty(_frontend.MediaDirectory))
                 {
@@ -110,7 +121,7 @@ public partial class MainViewModel : ObservableObject
                     catch { }
                 }
 
-                var vm = new SystemViewModel(system, _config, mediaStatus);
+                var vm = new SystemViewModel(system, _config, scrapedCount, mediaStatus);
                 AllSystems.Add(vm);
             }
 
@@ -204,14 +215,16 @@ public partial class MainViewModel : ObservableObject
                 StatSkipped = p.Skipped;
                 StatMedia = p.MediaDownloaded;
 
-                var total = p.TotalGames > 0 ? p.TotalGames : 1;
-                ProgressPercent = (int)((double)p.CompletedGames / total * 100);
-                ProgressText = $"System {p.CompletedSystems + 1}/{p.TotalSystems} | Game {p.CompletedGames}/{p.TotalGames}";
+                var total = p.TotalGamesAllSystems > 0 ? p.TotalGamesAllSystems : 1;
+                var completed = p.CompletedGamesAllSystems;
+                ProgressPercent = (int)((double)completed / total * 100);
+                ProgressText = $"{completed} / {total} games";
 
-                if (p.RemainingRequests >= 0)
-                    ApiQuotaText = $"API Quota: {p.RemainingRequests:N0} / {p.MaxRequestsPerDay:N0} remaining today";
-                else
-                    ApiQuotaText = "";
+                ApiQuotaText = p.MaxRequestsPerDay > 0
+                    ? $"API: {p.RequestsMadeToday:N0}/{p.MaxRequestsPerDay:N0}"
+                    : p.RequestsMadeToday > 0
+                        ? $"API: {p.RequestsMadeToday:N0} calls"
+                        : "";
             });
 
             await Task.Run(() => orchestrator.Scrape(
@@ -260,20 +273,20 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void CleanupMedia()
     {
-        if (_frontend == null || _cache == null)
+        if (_frontend == null)
             return;
 
         var httpClient = new HttpClient();
         var mediaService = new MediaDownloadService(httpClient, _frontend);
         var totalDeleted = 0;
 
-        foreach (var sys in AllSystems.Where(s => s.IsSelected))
+        foreach (var sys in AllSystems)
         {
             totalDeleted += mediaService.CleanupDisabledMedia(
-                sys.Name, _config, msg => Log.Log(msg));
+                sys.Name, _config, msg => { });
         }
 
-        Log.Log($"Cleanup complete: {totalDeleted} files deleted");
+        Settings.StatusMessage = $"Cleanup complete: {totalDeleted} files deleted";
     }
 
     private void ResetStats()

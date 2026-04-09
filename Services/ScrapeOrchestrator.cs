@@ -10,11 +10,14 @@ public class ScrapeProgress
     public int CompletedSystems { get; set; }
     public int TotalGames { get; set; }
     public int CompletedGames { get; set; }
+    public int TotalGamesAllSystems { get; set; }
+    public int CompletedGamesAllSystems { get; set; }
     public int Scraped { get; set; }
     public int NotFound { get; set; }
     public int Errors { get; set; }
     public int Skipped { get; set; }
     public int MediaDownloaded { get; set; }
+    public int RequestsMadeToday { get; set; }
     public int RemainingRequests { get; set; } = -1;
     public int MaxRequestsPerDay { get; set; } = -1;
 }
@@ -51,12 +54,34 @@ public class ScrapeOrchestrator
         Action<string> log,
         CancellationToken ct)
     {
+        // Count total ROMs across all systems upfront
+        var allRomFiles = new Dictionary<EmulationSystem, List<string>>();
+        var grandTotal = 0;
+        foreach (var system in systems)
+        {
+            var files = GetRomFiles(system);
+            allRomFiles[system] = files;
+            grandTotal += files.Count;
+        }
+
         var p = new ScrapeProgress
         {
-            TotalSystems = systems.Count
+            TotalSystems = systems.Count,
+            TotalGamesAllSystems = grandTotal
         };
 
-        log($"Starting scrape of {systems.Count} system(s)...");
+        // Fetch API quota before starting
+        log("Checking API quota...");
+        await _api.ValidateCredentials(config.ScreenScraperUser, config.ScreenScraperPassword);
+        p.RequestsMadeToday = _api.RequestsMadeToday;
+        p.MaxRequestsPerDay = _api.MaxRequestsPerDay;
+        p.RemainingRequests = _api.RemainingRequests;
+        progress.Report(p);
+
+        if (_api.MaxRequestsPerDay > 0)
+            log($"API quota: {_api.RequestsMadeToday}/{_api.MaxRequestsPerDay} used today");
+
+        log($"Starting scrape of {systems.Count} system(s), {grandTotal} total ROMs...");
 
         foreach (var system in systems)
         {
@@ -80,7 +105,7 @@ public class ScrapeOrchestrator
                 continue;
             }
 
-            var romFiles = GetRomFiles(system);
+            var romFiles = allRomFiles[system];
             p.TotalGames = romFiles.Count;
             log($"[{system.FullName}] Found {romFiles.Count} ROM(s)");
 
@@ -100,6 +125,7 @@ public class ScrapeOrchestrator
                     {
                         p.Skipped++;
                         p.CompletedGames++;
+                        p.CompletedGamesAllSystems++;
                         progress.Report(p);
                         continue;
                     }
@@ -112,6 +138,7 @@ public class ScrapeOrchestrator
                     {
                         p.Skipped++;
                         p.CompletedGames++;
+                        p.CompletedGamesAllSystems++;
                         progress.Report(p);
                         continue;
                     }
@@ -121,6 +148,7 @@ public class ScrapeOrchestrator
                     {
                         p.Skipped++;
                         p.CompletedGames++;
+                        p.CompletedGamesAllSystems++;
                         progress.Report(p);
                         continue;
                     }
@@ -176,10 +204,12 @@ public class ScrapeOrchestrator
                 }
 
                 // Update quota info
+                p.RequestsMadeToday = _api.RequestsMadeToday;
                 p.RemainingRequests = _api.RemainingRequests;
                 p.MaxRequestsPerDay = _api.MaxRequestsPerDay;
 
                 p.CompletedGames++;
+                p.CompletedGamesAllSystems++;
                 progress.Report(p);
             }
 

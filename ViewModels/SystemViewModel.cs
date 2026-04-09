@@ -49,17 +49,21 @@ public partial class SystemViewModel : ObservableObject
     public string FullName => System.FullName;
     public int RomCount => System.RomCount;
     public int ScreenScraperId => System.ScreenScraperId;
-    public string StatusText => ScreenScraperId > 0 ? $"{RomCount} ROMs" : "Unknown system";
+    public int ScrapedCount { get; }
+    public string StatusText => ScreenScraperId > 0
+        ? $"{ScrapedCount}/{RomCount} scraped"
+        : $"{RomCount} ROMs (unknown system)";
 
     public ObservableCollection<MediaTypeToggle> MediaToggles { get; } = [];
 
     private readonly ScraperConfig _config;
 
     public SystemViewModel(EmulationSystem system, ScraperConfig config,
-        Dictionary<MediaType, int>? mediaStatus = null)
+        int scrapedCount = 0, Dictionary<MediaType, int>? mediaStatus = null)
     {
         System = system;
         _config = config;
+        ScrapedCount = scrapedCount;
         _isSelected = system.RomCount > 0 && system.ScreenScraperId > 0;
 
         RefreshMediaToggles(mediaStatus);

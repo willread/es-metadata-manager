@@ -131,14 +131,24 @@ public class MediaDownloadService
         return result;
     }
 
+    private static readonly HashSet<string> ValidMediaExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+        ".mp4", ".avi", ".mkv", ".webm", ".mov",
+        ".pdf"
+    };
+
     private static string GetExtensionFromUrl(string url, MediaType mediaType)
     {
-        // Try to get extension from URL
-        var uri = new Uri(url);
-        var ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
-
-        if (!string.IsNullOrEmpty(ext))
-            return ext;
+        // Try to get a real media extension from the URL
+        try
+        {
+            var uri = new Uri(url);
+            var ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
+            if (ValidMediaExtensions.Contains(ext))
+                return ext;
+        }
+        catch { }
 
         // Fallback based on media type
         return mediaType switch

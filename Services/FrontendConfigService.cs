@@ -24,8 +24,8 @@ public class FrontendConfigService
 
     private void LoadEsDe(ScraperConfig config)
     {
-        var settingsPath = Path.Combine(config.ConfigPath, "es_settings.xml");
-        if (!File.Exists(settingsPath))
+        var settingsPath = FrontendDetector.FindSettingsFile(config.ConfigPath);
+        if (settingsPath == null)
             return;
 
         // Parse es_settings.xml (flat list of typed elements)
@@ -39,18 +39,17 @@ public class FrontendConfigService
                 var el = XElement.Parse(line.Trim());
                 var name = el.Attribute("name")?.Value;
                 var value = el.Attribute("value")?.Value;
-                if (name == "ROMDirectory" && value != null)
+                if (name == "ROMDirectory" && !string.IsNullOrWhiteSpace(value))
                     RomDirectory = NormalizePath(value);
-                else if (name == "MediaDirectory" && value != null)
+                else if (name == "MediaDirectory" && !string.IsNullOrWhiteSpace(value))
                     MediaDirectory = NormalizePath(value);
             }
             catch { }
         }
 
-        if (!string.IsNullOrEmpty(config.RomDirectory))
-            RomDirectory = config.RomDirectory;
-        if (!string.IsNullOrEmpty(config.MediaDirectory))
-            MediaDirectory = config.MediaDirectory;
+        // ES-DE defaults MediaDirectory to <configPath>/downloaded_media when not set
+        if (string.IsNullOrEmpty(MediaDirectory))
+            MediaDirectory = Path.Combine(config.ConfigPath, "downloaded_media");
 
         // Load systems from es_systems.xml
         LoadEsDeSystemsXml(config.ConfigPath);
@@ -126,10 +125,7 @@ public class FrontendConfigService
     {
         // Classic EmulationStation uses es_systems.cfg
         var systemsPath = Path.Combine(config.ConfigPath, "es_systems.cfg");
-        RomDirectory = config.RomDirectory;
-        MediaDirectory = !string.IsNullOrEmpty(config.MediaDirectory)
-            ? config.MediaDirectory
-            : Path.Combine(config.ConfigPath, "downloaded_images");
+        MediaDirectory = Path.Combine(config.ConfigPath, "downloaded_images");
 
         if (!File.Exists(systemsPath))
             return;

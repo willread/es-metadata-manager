@@ -90,8 +90,6 @@ public class ScraperConfig
 {
     public FrontendType FrontendType { get; set; } = FrontendType.EsDe;
     public string ConfigPath { get; set; } = "";
-    public string RomDirectory { get; set; } = "";
-    public string MediaDirectory { get; set; } = "";
 
     // ScreenScraper credentials
     public string ScreenScraperUser { get; set; } = "";

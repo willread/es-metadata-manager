@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ESMetadataManager")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f94b7a602ead6a40fbdd8aad9d7c11997d5f2e3a")]
 [assembly: System.Reflection.AssemblyProductAttribute("ESMetadataManager")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ESMetadataManager")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

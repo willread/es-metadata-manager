@@ -221,6 +221,14 @@ public class CacheDatabase : IDisposable
         return cmd.ExecuteScalar() != null;
     }
 
+    public int GetScrapedCount(string systemName)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM scrape_history WHERE system_name = @sys";
+        cmd.Parameters.AddWithValue("@sys", systemName);
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
     public void AddScrapeHistory(string filePath, string systemName, int screenScraperId)
     {
         using var cmd = _conn.CreateCommand();

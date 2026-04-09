@@ -9,9 +9,10 @@ namespace GamelistScraper.Services;
 public class ScreenScraperApi : IDisposable
 {
     private const string BaseUrl = "https://api.screenscraper.fr/api2/";
-    private const string DevId = "GamelistScraper";
-    private const string DevPassword = "GamelistScraperDev";
-    private const string SoftName = "GamelistScraper";
+    // TODO: Replace with our own dev credentials before distributing
+    private const string DevId = "muldjord";
+    private const string DevPassword = "uWu5VRc9QDVMPpD8";
+    private const string SoftName = "ESMetadataManager";
 
     private const int MinRequestIntervalMs = 1200;
     private const int MaxRetries = 3;
@@ -313,12 +314,26 @@ public class ScreenScraperApi : IDisposable
             var root = doc.RootElement;
 
             if (!root.TryGetProperty("response", out var response) ||
-                !response.TryGetProperty("jeu", out var jeu))
+                !response.TryGetProperty("jeu", out var jeuRaw))
             {
                 return new ScrapeResult
                 {
                     Status = ScrapeStatus.NotFound,
                     Message = "Response did not contain game data."
+                };
+            }
+
+            // jeu can be an object (single match) or array (multiple matches) — take the first
+            var jeu = jeuRaw.ValueKind == JsonValueKind.Array
+                ? jeuRaw.EnumerateArray().FirstOrDefault()
+                : jeuRaw;
+
+            if (jeu.ValueKind != JsonValueKind.Object)
+            {
+                return new ScrapeResult
+                {
+                    Status = ScrapeStatus.NotFound,
+                    Message = "Response did not contain valid game data."
                 };
             }
 
@@ -341,35 +356,24 @@ public class ScreenScraperApi : IDisposable
             entry.Description = PickLanguageText(jeu, "synopsis", "langue", "text", preferredLanguage);
 
             // Developer
-            if (jeu.TryGetProperty("developpeur", out var dev) &&
-                dev.TryGetProperty("text", out var devText))
-                entry.Developer = devText.GetString() ?? "";
+            entry.Developer = GetTextFromObjectOrArray(jeu, "developpeur");
 
             // Publisher
-            if (jeu.TryGetProperty("editeur", out var pub) &&
-                pub.TryGetProperty("text", out var pubText))
-                entry.Publisher = pubText.GetString() ?? "";
+            entry.Publisher = GetTextFromObjectOrArray(jeu, "editeur");
 
             // Genre
             entry.Genre = ParseGenre(jeu, preferredLanguage);
 
             // Players
-            if (jeu.TryGetProperty("joueurs", out var players) &&
-                players.TryGetProperty("text", out var playersText))
-                entry.Players = playersText.GetString() ?? "";
+            entry.Players = GetTextFromObjectOrArray(jeu, "joueurs");
 
             // Rating (0-20 → 0.0-1.0)
-            if (jeu.TryGetProperty("note", out var note) &&
-                note.TryGetProperty("text", out var noteText))
-            {
-                var noteStr = noteText.ValueKind == JsonValueKind.Number
-                    ? noteText.GetInt32().ToString()
-                    : noteText.GetString() ?? "0";
-                if (float.TryParse(noteStr, System.Globalization.NumberStyles.Any,
+            var noteStr = GetTextFromObjectOrArray(jeu, "note");
+            if (!string.IsNullOrEmpty(noteStr) &&
+                float.TryParse(noteStr, System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var rating))
-                {
-                    entry.Rating = Math.Clamp(rating / 20f, 0f, 1f);
-                }
+            {
+                entry.Rating = Math.Clamp(rating / 20f, 0f, 1f);
             }
 
             // Release date
@@ -377,18 +381,24 @@ public class ScreenScraperApi : IDisposable
             entry.ReleaseDate = FormatReleaseDate(dateRaw);
             entry.Region = preferredRegion;
 
-            // Media URLs
-            if (jeu.TryGetProperty("medias", out var medias) && medias.ValueKind == JsonValueKind.Array)
+            // Media URLs — ScreenScraper returns either an array or an object
+            if (jeu.TryGetProperty("medias", out var medias))
             {
-                foreach (var media in medias.EnumerateArray())
+                var mediaItems = medias.ValueKind == JsonValueKind.Array
+                    ? medias.EnumerateArray()
+                    : SingleElement(medias);
+
+                foreach (var media in mediaItems)
                 {
+                    if (media.ValueKind != JsonValueKind.Object)
+                        continue;
+
                     var type = media.TryGetProperty("type", out var t) ? t.GetString() ?? "" : "";
                     var mediaUrl = media.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
 
                     if (string.IsNullOrEmpty(type) || string.IsNullOrEmpty(mediaUrl))
                         continue;
 
-                    // Prefer the region-specific media if available
                     var mediaRegion = media.TryGetProperty("region", out var r) ? r.GetString() ?? "" : "";
 
                     if (!entry.MediaUrls.ContainsKey(type))
@@ -408,7 +418,7 @@ public class ScreenScraperApi : IDisposable
                 Game = entry
             };
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             return new ScrapeResult
             {
@@ -421,12 +431,19 @@ public class ScreenScraperApi : IDisposable
     private static string PickRegionText(
         JsonElement parent, string arrayProp, string regionKey, string textKey, string preferredRegion)
     {
-        if (!parent.TryGetProperty(arrayProp, out var arr) || arr.ValueKind != JsonValueKind.Array)
+        if (!parent.TryGetProperty(arrayProp, out var elem))
             return "";
 
+        var items = elem.ValueKind == JsonValueKind.Array
+            ? elem.EnumerateArray()
+            : SingleElement(elem);
+
         string fallback = "";
-        foreach (var item in arr.EnumerateArray())
+        foreach (var item in items)
         {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+
             var text = item.TryGetProperty(textKey, out var t) ? t.GetString() ?? "" : "";
             if (string.IsNullOrEmpty(text))
                 continue;
@@ -445,12 +462,19 @@ public class ScreenScraperApi : IDisposable
     private static string PickLanguageText(
         JsonElement parent, string arrayProp, string langKey, string textKey, string preferredLanguage)
     {
-        if (!parent.TryGetProperty(arrayProp, out var arr) || arr.ValueKind != JsonValueKind.Array)
+        if (!parent.TryGetProperty(arrayProp, out var elem))
             return "";
 
+        var items = elem.ValueKind == JsonValueKind.Array
+            ? elem.EnumerateArray()
+            : SingleElement(elem);
+
         string fallback = "";
-        foreach (var item in arr.EnumerateArray())
+        foreach (var item in items)
         {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+
             var text = item.TryGetProperty(textKey, out var t) ? t.GetString() ?? "" : "";
             if (string.IsNullOrEmpty(text))
                 continue;
@@ -466,48 +490,100 @@ public class ScreenScraperApi : IDisposable
         return fallback;
     }
 
-    private static string ParseGenre(JsonElement jeu, string preferredLanguage)
+    /// <summary>
+    /// ScreenScraper returns some fields as either an object {"text":"foo"} or an array [{"text":"foo"}].
+    /// This handles both cases.
+    /// </summary>
+    private static string GetTextFromObjectOrArray(JsonElement parent, string propertyName)
     {
-        if (!jeu.TryGetProperty("genres", out var genres))
+        if (!parent.TryGetProperty(propertyName, out var elem))
             return "";
 
-        // Try language-specific genre list: genres_en, genres_fr, etc.
-        var langKey = $"genres_{preferredLanguage}";
-        if (genres.TryGetProperty(langKey, out var langGenres) &&
-            langGenres.ValueKind == JsonValueKind.Array)
+        if (elem.ValueKind == JsonValueKind.Object)
         {
-            var names = new List<string>();
-            foreach (var g in langGenres.EnumerateArray())
-            {
-                if (g.TryGetProperty("nomgenre", out var name))
-                {
-                    var n = name.GetString() ?? "";
-                    if (!string.IsNullOrEmpty(n))
-                        names.Add(n);
-                }
-            }
-            if (names.Count > 0)
-                return string.Join(", ", names);
+            return elem.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
         }
 
-        // Fallback: try genres_en
-        if (!preferredLanguage.Equals("en", StringComparison.OrdinalIgnoreCase) &&
-            genres.TryGetProperty("genres_en", out var enGenres) &&
-            enGenres.ValueKind == JsonValueKind.Array)
+        if (elem.ValueKind == JsonValueKind.Array)
         {
-            var names = new List<string>();
-            foreach (var g in enGenres.EnumerateArray())
+            foreach (var item in elem.EnumerateArray())
             {
-                if (g.TryGetProperty("nomgenre", out var name))
+                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("text", out var t))
                 {
-                    var n = name.GetString() ?? "";
-                    if (!string.IsNullOrEmpty(n))
-                        names.Add(n);
+                    var val = t.GetString() ?? "";
+                    if (!string.IsNullOrEmpty(val))
+                        return val;
                 }
             }
-            if (names.Count > 0)
-                return string.Join(", ", names);
         }
+
+        // Could be a plain string/number
+        if (elem.ValueKind == JsonValueKind.String)
+            return elem.GetString() ?? "";
+        if (elem.ValueKind == JsonValueKind.Number)
+            return elem.GetRawText();
+
+        return "";
+    }
+
+    /// <summary>Wraps a single JsonElement into an enumerable for uniform iteration.</summary>
+    private static IEnumerable<JsonElement> SingleElement(JsonElement elem)
+    {
+        yield return elem;
+    }
+
+    private static string ParseGenre(JsonElement jeu, string preferredLanguage)
+    {
+        try
+        {
+            if (!jeu.TryGetProperty("genres", out var genres))
+                return "";
+
+            // genres can be an array of genre objects or an object with language keys
+            if (genres.ValueKind == JsonValueKind.Array)
+            {
+                // Array of genre objects — look for noms with language
+                var names = new List<string>();
+                foreach (var g in genres.EnumerateArray())
+                {
+                    if (g.ValueKind != JsonValueKind.Object) continue;
+                    // Try noms array for language-specific name
+                    var name = PickLanguageText(g, "noms", "langue", "text", preferredLanguage);
+                    if (string.IsNullOrEmpty(name) && g.TryGetProperty("nomgenre", out var ng))
+                        name = ng.GetString() ?? "";
+                    if (!string.IsNullOrEmpty(name))
+                        names.Add(name);
+                }
+                if (names.Count > 0)
+                    return string.Join(", ", names);
+            }
+            else if (genres.ValueKind == JsonValueKind.Object)
+            {
+                // Object with language-keyed arrays
+                var langKey = $"genres_{preferredLanguage}";
+                var genreList = genres.TryGetProperty(langKey, out var lg) ? lg
+                    : genres.TryGetProperty("genres_en", out var eg) ? eg
+                    : default;
+
+                if (genreList.ValueKind == JsonValueKind.Array)
+                {
+                    var names = new List<string>();
+                    foreach (var g in genreList.EnumerateArray())
+                    {
+                        if (g.ValueKind != JsonValueKind.Object) continue;
+                        if (g.TryGetProperty("nomgenre", out var name))
+                        {
+                            var n = name.GetString() ?? "";
+                            if (!string.IsNullOrEmpty(n))
+                                names.Add(n);
+                        }
+                    }
+                    if (names.Count > 0)
+                        return string.Join(", ", names);
+                }
+            }
+        }
+        catch { }
 
         return "";
     }

@@ -24,6 +24,7 @@ public partial class GlobalMediaToggle : ObservableObject
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly ScraperConfig _config;
+    private Action? _stopScrapeAction;
 
     [ObservableProperty]
     private FrontendType _frontendType;
@@ -32,10 +33,7 @@ public partial class SettingsViewModel : ObservableObject
     private string _configPath = "";
 
     [ObservableProperty]
-    private string _romDirectory = "";
-
-    [ObservableProperty]
-    private string _mediaDirectory = "";
+    private string _detectedConfigInfo = "";
 
     [ObservableProperty]
     private string _screenScraperUser = "";
@@ -70,12 +68,12 @@ public partial class SettingsViewModel : ObservableObject
         LoadFromConfig();
     }
 
+    public void SetStopScrapeAction(Action action) => _stopScrapeAction = action;
+
     private void LoadFromConfig()
     {
         FrontendType = _config.FrontendType;
         ConfigPath = _config.ConfigPath;
-        RomDirectory = _config.RomDirectory;
-        MediaDirectory = _config.MediaDirectory;
         ScreenScraperUser = _config.ScreenScraperUser;
         ScreenScraperPassword = _config.ScreenScraperPassword;
         ForceRescrape = _config.ForceRescrape;
@@ -89,6 +87,33 @@ public partial class SettingsViewModel : ObservableObject
             var enabled = _config.GlobalMediaTypes.TryGetValue(type, out var c) && c.Enabled;
             GlobalMediaToggles.Add(new GlobalMediaToggle(type, enabled));
         }
+
+        RefreshDetectedPaths();
+    }
+
+    /// <summary>
+    /// Reads the frontend config to show the user where ROMs and media are.
+    /// </summary>
+    public void RefreshDetectedPaths()
+    {
+        if (string.IsNullOrEmpty(ConfigPath))
+        {
+            DetectedConfigInfo = "";
+            return;
+        }
+
+        try
+        {
+            var frontend = new FrontendConfigService();
+            frontend.Load(_config);
+            var systemCount = frontend.Systems.Count;
+            var withRoms = frontend.Systems.Count(s => s.RomCount > 0);
+            DetectedConfigInfo = $"Found {systemCount} systems ({withRoms} with ROMs)";
+        }
+        catch
+        {
+            DetectedConfigInfo = "Could not read config";
+        }
     }
 
     [RelayCommand]
@@ -96,8 +121,6 @@ public partial class SettingsViewModel : ObservableObject
     {
         _config.FrontendType = FrontendType;
         _config.ConfigPath = ConfigPath;
-        _config.RomDirectory = RomDirectory;
-        _config.MediaDirectory = MediaDirectory;
         _config.ScreenScraperUser = ScreenScraperUser;
         _config.ScreenScraperPassword = ScreenScraperPassword;
         _config.ForceRescrape = ForceRescrape;
@@ -110,53 +133,35 @@ public partial class SettingsViewModel : ObservableObject
             _config.GlobalMediaTypes[toggle.MediaType] = new MediaTypeConfig(toggle.IsEnabled);
         }
 
+        // Stop any in-progress scrape since settings changed
+        _stopScrapeAction?.Invoke();
+
         _config.Save();
+        RefreshDetectedPaths();
         StatusMessage = "Settings saved!";
     }
 
     [RelayCommand]
     private void BrowseConfigPath()
     {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        var result = BrowseFolder("Select ES-DE / EmulationStation config directory", ConfigPath);
+        if (result != null)
         {
-            Description = "Select ES-DE / EmulationStation config directory",
-            UseDescriptionForTitle = true,
-        };
-        if (!string.IsNullOrEmpty(ConfigPath))
-            dialog.SelectedPath = ConfigPath;
-
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            ConfigPath = dialog.SelectedPath;
+            ConfigPath = result;
+            RefreshDetectedPaths();
+        }
     }
 
-    [RelayCommand]
-    private void BrowseRomDirectory()
+    private static string? BrowseFolder(string title, string initialDir)
     {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        var dialog = new Microsoft.Win32.OpenFolderDialog
         {
-            Description = "Select ROM directory",
-            UseDescriptionForTitle = true,
+            Title = title,
         };
-        if (!string.IsNullOrEmpty(RomDirectory))
-            dialog.SelectedPath = RomDirectory;
+        if (!string.IsNullOrEmpty(initialDir) && Directory.Exists(initialDir))
+            dialog.InitialDirectory = initialDir;
 
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            RomDirectory = dialog.SelectedPath;
-    }
-
-    [RelayCommand]
-    private void BrowseMediaDirectory()
-    {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            Description = "Select media directory",
-            UseDescriptionForTitle = true,
-        };
-        if (!string.IsNullOrEmpty(MediaDirectory))
-            dialog.SelectedPath = MediaDirectory;
-
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            MediaDirectory = dialog.SelectedPath;
+        return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
     [RelayCommand]
@@ -168,11 +173,12 @@ public partial class SettingsViewModel : ObservableObject
             var first = detected[0];
             FrontendType = first.Type;
             ConfigPath = first.ConfigPath;
+            RefreshDetectedPaths();
             StatusMessage = $"Auto-detected {first.Type} at {first.ConfigPath}";
         }
         else
         {
-            StatusMessage = "No EmulationStation frontend detected. Please set paths manually.";
+            StatusMessage = "No EmulationStation frontend detected. Set config path manually.";
         }
     }
 

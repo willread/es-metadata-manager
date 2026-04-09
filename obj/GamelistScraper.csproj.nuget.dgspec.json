@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "E:\\Downloads\\Games\\GamelistScraper\\GamelistScraper\\GamelistScraper.csproj": {}
+    "C:\\Users\\will\\Documents\\will\\es-metadata-manager\\GamelistScraper.csproj": {}
   },
   "projects": {
-    "E:\\Downloads\\Games\\GamelistScraper\\GamelistScraper\\GamelistScraper.csproj": {
+    "C:\\Users\\will\\Documents\\will\\es-metadata-manager\\GamelistScraper.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\Downloads\\Games\\GamelistScraper\\GamelistScraper\\GamelistScraper.csproj",
+        "projectUniqueName": "C:\\Users\\will\\Documents\\will\\es-metadata-manager\\GamelistScraper.csproj",
         "projectName": "ESMetadataManager",
-        "projectPath": "E:\\Downloads\\Games\\GamelistScraper\\GamelistScraper\\GamelistScraper.csproj",
+        "projectPath": "C:\\Users\\will\\Documents\\will\\es-metadata-manager\\GamelistScraper.csproj",
         "packagesPath": "C:\\Users\\will\\.nuget\\packages\\",
-        "outputPath": "E:\\Downloads\\Games\\GamelistScraper\\GamelistScraper\\obj\\",
+        "outputPath": "C:\\Users\\will\\Documents\\will\\es-metadata-manager\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -56,6 +56,12 @@
             "Microsoft.Data.Sqlite": {
               "target": "Package",
               "version": "[10.0.5, )"
+            },
+            "Microsoft.NET.ILLink.Tasks": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.8, )",
+              "autoReferenced": true
             }
           },
           "imports": [
@@ -73,7 +79,7 @@
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             },
-            "Microsoft.WindowsDesktop.App": {
+            "Microsoft.WindowsDesktop.App.WPF": {
               "privateAssets": "none"
             }
           },
