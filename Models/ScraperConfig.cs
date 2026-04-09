@@ -113,6 +113,9 @@ public class ScraperConfig
     // Per-system overrides (only stores differences from global)
     public Dictionary<string, SystemMediaOverride> SystemOverrides { get; set; } = new();
 
+    // Whether to scrape text metadata (name, description, genre, etc.) into gamelist.xml
+    public bool ScrapeMetadata { get; set; } = true;
+
     // Scraping options
     public bool ForceRescrape { get; set; }
     public bool ForceRedownloadMedia { get; set; }

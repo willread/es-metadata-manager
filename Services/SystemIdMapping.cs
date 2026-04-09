@@ -20,6 +20,7 @@ public static class SystemIdMapping
         // Amstrad
         { "amstradcpc", 65 },
         { "cpc", 65 },
+        { "gx4000", 87 },
 
         // Arcade
         { "arcade", 75 },
@@ -44,6 +45,7 @@ public static class SystemIdMapping
         { "atarijaguar", 27 },
         { "jaguar", 27 },
         { "jaguarcd", 171 },
+        { "atarijaguarcd", 171 },
         { "atarilynx", 28 },
         { "lynx", 28 },
         { "atarist", 42 },
@@ -56,11 +58,20 @@ public static class SystemIdMapping
         { "wonderswancolor", 46 },
         { "wsc", 46 },
 
+        // Bally
+        { "astrocde", 44 },
+
+        // Casio
+        { "pv1000", 74 },
+
         // Coleco / Mattel / GCE
         { "colecovision", 48 },
         { "coleco", 48 },
         { "intellivision", 115 },
         { "vectrex", 102 },
+
+        // Coleco
+        { "adam", 89 },
 
         // Commodore
         { "c64", 66 },
@@ -69,21 +80,35 @@ public static class SystemIdMapping
         { "plus4", 99 },
         { "vic20", 73 },
 
+        // CreatiVision
+        { "crvision", 241 },
+
         // Daphne / Laserdisc
         { "daphne", 49 },
+        { "laserdisc", 49 },
 
         // Fairchild Channel F
         { "channelf", 80 },
 
-        // GCE
+        // Bit Corp
+        { "gamate", 266 },
+
+        // Epoch
+        { "scv", 67 },
+
+        // Magnavox / Philips
         { "odyssey2", 104 },
         { "videopac", 104 },
 
         // Microsoft
         { "dos", 135 },
         { "pc", 135 },
+        { "windows", 135 },
+        { "windows3x", 136 },
+        { "windows9x", 137 },
         { "xbox", 32 },
         { "xbox360", 33 },
+        { "xboxone", 34 },
 
         // MSX
         { "msx", 113 },
@@ -114,9 +139,12 @@ public static class SystemIdMapping
         { "fc", 3 },
         { "fds", 106 },
         { "snes", 4 },
+        { "snesna", 4 },
         { "superfamicom", 4 },
         { "sfc", 4 },
+        { "sgb", 127 },
         { "n64", 14 },
+        { "n64dd", 122 },
         { "gc", 13 },
         { "gamecube", 13 },
         { "ngc", 13 },
@@ -145,23 +173,33 @@ public static class SystemIdMapping
         // Sega
         { "genesis", 1 },
         { "megadrive", 1 },
+        { "megadrivejp", 1 },
         { "md", 1 },
         { "mastersystem", 2 },
+        { "mark3", 2 },
         { "sms", 2 },
         { "gamegear", 21 },
         { "gg", 21 },
         { "sg-1000", 109 },
         { "sg1000", 109 },
         { "sega32x", 19 },
+        { "sega32xjp", 19 },
+        { "sega32xna", 19 },
         { "32x", 19 },
         { "megacd", 20 },
+        { "megacdjp", 20 },
         { "segacd", 20 },
         { "saturn", 22 },
+        { "saturnjp", 22 },
         { "dc", 23 },
         { "dreamcast", 23 },
         { "naomi", 56 },
         { "naomi2", 230 },
+        { "naomigd", 56 },
         { "atomiswave", 53 },
+        { "model2", 236 },
+        { "model3", 277 },
+        { "stv", 242 },
 
         // SNK
         { "neogeo", 142 },
@@ -186,6 +224,7 @@ public static class SystemIdMapping
         { "vita", 62 },
 
         // Sharp
+        { "x1", 220 },
         { "x68000", 79 },
         { "x68k", 79 },
 
@@ -211,6 +250,17 @@ public static class SystemIdMapping
 
         // Magnavox / Philips
         { "o2em", 104 },
+
+        // Creatronic
+        { "megaduck", 90 },
+
+        // Emerson
+        { "arcadia", 94 },
+
+        // Fujitsu
+        { "fm7", 97 },
+        { "fm-7", 97 },
+        { "fmtowns", 253 },
 
         // Watara
         { "supervision", 207 },
@@ -244,14 +294,58 @@ public static class SystemIdMapping
         // Apple
         { "apple2", 86 },
         { "apple2gs", 217 },
+        { "macintosh", 146 },
 
         // Tangerine
         { "samcoupe", 213 },
+
+        // Tiger
+        { "gamecom", 121 },
+
+        // VTech
+        { "vsmile", 120 },
+
+        // Arduboy
+        { "arduboy", 263 },
+
+        // Fantasy consoles
+        { "pico8", 234 },
+        { "tic80", 222 },
+        { "lowresnx", 244 },
+
+        // Spectravideo
+        { "spectravideo", 218 },
+
+        // Sord
+        { "multivision", 113 },
+
+        // Funtech
+        { "supracan", 261 },
+
+        // J2ME
+        { "j2me", 164 },
+
+        // Flash
+        { "flash", 282 },
+
+        // Virtual pinball
+        { "vpinball", 198 },
+        { "fpinball", 198 },
+
+        // Dragon / Tandy (additional)
+        { "tanodragon", 91 },
+
+        // Doom / Quake engines
+        { "doom", 135 },
+        { "quake", 135 },
 
         // Ports / Engines
         { "ports", 135 },
         { "openbor", 214 },
         { "easyrpg", 231 },
+
+        // Amiga CDTV (alternate name)
+        { "cdtv", 129 },
     };
 
     /// <summary>

@@ -191,7 +191,7 @@ public class FrontendConfigService
         try
         {
             var extSet = new HashSet<string>(extensions, StringComparer.OrdinalIgnoreCase);
-            return Directory.EnumerateFiles(romPath, "*", SearchOption.TopDirectoryOnly)
+            return Directory.EnumerateFiles(romPath, "*", SearchOption.AllDirectories)
                 .Count(f => extSet.Contains(Path.GetExtension(f)));
         }
         catch

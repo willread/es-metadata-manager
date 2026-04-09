@@ -137,6 +137,34 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Padding" Value="6,4"/>
         </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#45475a"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#45475a"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Override system colors used by ComboBox dropdown -->
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#313244"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#45475a"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#cdd6f4"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#cdd6f4"/>
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="#cdd6f4"/>
             <Setter Property="FontSize" Value="13"/>
@@ -171,7 +199,7 @@
         </Style>
     </Window.Resources>
 
-    <TabControl Background="#1e1e2e" BorderThickness="0" Padding="0">
+    <TabControl x:Name="MainTabControl" Background="#1e1e2e" BorderThickness="0" Padding="0">
         <!-- ════════════════ SCRAPE TAB ════════════════ -->
         <TabItem Header="Scrape">
             <Grid Margin="20,16">
@@ -189,6 +217,7 @@
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                         <Button Content="Start Scrape" Command="{Binding StartScrapeCommand}"
                                 Style="{StaticResource AccentButton}" IsEnabled="{Binding IsLoaded}"
+                                Visibility="{Binding NotScraping, Converter={StaticResource BoolToVis}}"
                                 Margin="0,0,6,0"/>
                         <Button Content="Stop" Command="{Binding StopScrapeCommand}"
                                 Style="{StaticResource DangerButton}"
@@ -196,9 +225,11 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <Button Content="All" Command="{Binding SelectAllCommand}"
-                                Style="{StaticResource SmallButton}" Margin="0,0,4,0"/>
+                                Style="{StaticResource SmallButton}" Margin="0,0,4,0"
+                                IsEnabled="{Binding NotScraping}"/>
                         <Button Content="None" Command="{Binding DeselectAllCommand}"
-                                Style="{StaticResource SmallButton}" Margin="0,0,12,0"/>
+                                Style="{StaticResource SmallButton}" Margin="0,0,12,0"
+                                IsEnabled="{Binding NotScraping}"/>
                         <Grid Width="200">
                             <TextBox x:Name="FilterBox" Text="{Binding SystemFilter, UpdateSourceTrigger=PropertyChanged}"
                                      VerticalContentAlignment="Center"/>
@@ -262,7 +293,8 @@
                                 </Grid.ColumnDefinitions>
                                 <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}"
                                           VerticalAlignment="Center" Margin="0,0,10,0"
-                                          Foreground="#cdd6f4"/>
+                                          Foreground="#cdd6f4"
+                                          IsEnabled="{Binding DataContext.NotScraping, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                 <TextBlock Grid.Column="1" Text="{Binding FullName}"
                                            Foreground="#cdd6f4"
                                            VerticalAlignment="Center" FontSize="13"/>
@@ -351,7 +383,7 @@
                 </DockPanel>
 
                 <!-- Row 5: Log output -->
-                <ListBox Grid.Row="5" ItemsSource="{Binding Log.FilteredEntries}"
+                <ListBox x:Name="LogListBox" Grid.Row="5" ItemsSource="{Binding Log.FilteredEntries}"
                          Background="#11111b" BorderBrush="#313244" BorderThickness="1"
                          FontFamily="Cascadia Mono, Consolas, Courier New"
                          FontSize="11" Padding="4"
@@ -441,8 +473,10 @@
                     <TextBlock Text="{Binding Settings.StatusMessage}" Foreground="#a6e3a1"
                                FontSize="11" Margin="100,2,0,0"/>
 
-                    <!-- Media Types -->
-                    <TextBlock Text="MEDIA TYPES" Style="{StaticResource SectionHeader}"/>
+                    <!-- Content to scrape -->
+                    <TextBlock Text="CONTENT" Style="{StaticResource SectionHeader}"/>
+                    <CheckBox Content="Metadata (name, description, genre, etc.)"
+                              IsChecked="{Binding Settings.ScrapeMetadata}" Margin="0,0,0,8" FontSize="12"/>
                     <ItemsControl ItemsSource="{Binding Settings.GlobalMediaToggles}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -492,8 +526,14 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                         <TextBlock Foreground="#f38ba8" FontSize="12" VerticalAlignment="Center"
-                                   Text="{Binding ErrorCacheCount, StringFormat='Errors: {0}'}"/>
+                                   Text="{Binding ErrorCacheCount, StringFormat='API errors: {0}'}"/>
                         <Button Content="Clear (Retry)" Command="{Binding ClearErrorCacheCommand}"
+                                Style="{StaticResource SmallButton}" Margin="10,0,0,0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Foreground="#eba0ac" FontSize="12" VerticalAlignment="Center"
+                                   Text="{Binding MediaErrorCount, StringFormat='Media download errors: {0}'}"/>
+                        <Button Content="Clear (Retry)" Command="{Binding ClearMediaErrorsCommand}"
                                 Style="{StaticResource SmallButton}" Margin="10,0,0,0"/>
                     </StackPanel>
                     <Button Content="Clean Up Unselected Media" Command="{Binding CleanupMediaCommand}"

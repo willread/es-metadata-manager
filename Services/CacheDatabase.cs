@@ -55,6 +55,16 @@ public class CacheDatabase : IDisposable
                 screenscraper_id INTEGER NOT NULL,
                 scraped_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS media_status (
+                file_path TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                url TEXT,
+                error_message TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_path, media_type)
+            );
             """;
         cmd.ExecuteNonQuery();
     }
@@ -241,6 +251,77 @@ public class CacheDatabase : IDisposable
         cmd.Parameters.AddWithValue("@ssid", screenScraperId);
         cmd.Parameters.AddWithValue("@time", DateTime.UtcNow.ToString("o"));
         cmd.ExecuteNonQuery();
+    }
+
+    // --- Per-game per-media-type status ---
+    public void SetMediaStatus(string filePath, string mediaType, string status, string? url = null, string? error = null)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR REPLACE INTO media_status (file_path, media_type, status, url, error_message, updated_at)
+            VALUES (@path, @type, @status, @url, @err, @time)
+            """;
+        cmd.Parameters.AddWithValue("@path", filePath);
+        cmd.Parameters.AddWithValue("@type", mediaType);
+        cmd.Parameters.AddWithValue("@status", status);
+        cmd.Parameters.AddWithValue("@url", (object?)url ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@err", (object?)error ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@time", DateTime.UtcNow.ToString("o"));
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Returns status and cached URL for a media type, or null if no record.</summary>
+    public (string status, string? url)? GetMediaStatus(string filePath, string mediaType)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT status, url FROM media_status WHERE file_path = @path AND media_type = @type";
+        cmd.Parameters.AddWithValue("@path", filePath);
+        cmd.Parameters.AddWithValue("@type", mediaType);
+        using var reader = cmd.ExecuteReader();
+        if (reader.Read())
+            return (reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+        return null;
+    }
+
+    /// <summary>Get all media types with errors for a given file.</summary>
+    public List<(string mediaType, string url)> GetMediaErrors(string filePath)
+    {
+        var results = new List<(string, string)>();
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT media_type, url FROM media_status WHERE file_path = @path AND status = 'error' AND url IS NOT NULL";
+        cmd.Parameters.AddWithValue("@path", filePath);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+            results.Add((reader.GetString(0), reader.GetString(1)));
+        return results;
+    }
+
+    public void ClearMediaErrors()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM media_status WHERE status = 'error'";
+        cmd.ExecuteNonQuery();
+    }
+
+    public int GetMediaErrorCount()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM media_status WHERE status = 'error'";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public void ClearMediaNotAvailable()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM media_status WHERE status = 'not_available'";
+        cmd.ExecuteNonQuery();
+    }
+
+    public int GetMediaNotAvailableCount()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM media_status WHERE status = 'not_available'";
+        return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
     public void Dispose()

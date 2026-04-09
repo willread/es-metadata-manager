@@ -49,9 +49,9 @@ public partial class SystemViewModel : ObservableObject
     public string FullName => System.FullName;
     public int RomCount => System.RomCount;
     public int ScreenScraperId => System.ScreenScraperId;
-    public int ScrapedCount { get; }
+    public int CompleteCount { get; }
     public string StatusText => ScreenScraperId > 0
-        ? $"{ScrapedCount}/{RomCount} scraped"
+        ? $"{CompleteCount}/{RomCount} complete"
         : $"{RomCount} ROMs (unknown system)";
 
     public ObservableCollection<MediaTypeToggle> MediaToggles { get; } = [];
@@ -63,7 +63,7 @@ public partial class SystemViewModel : ObservableObject
     {
         System = system;
         _config = config;
-        ScrapedCount = scrapedCount;
+        CompleteCount = scrapedCount;
         _isSelected = system.RomCount > 0 && system.ScreenScraperId > 0;
 
         RefreshMediaToggles(mediaStatus);

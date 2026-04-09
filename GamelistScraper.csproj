@@ -10,6 +10,9 @@
     <AssemblyName>ESMetadataManager</AssemblyName>
     <RootNamespace>GamelistScraper</RootNamespace>
     <PublishDir>dist</PublishDir>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>

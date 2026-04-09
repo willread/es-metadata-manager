@@ -120,8 +120,12 @@ public class ScrapeOrchestrator
 
                 try
                 {
-                    // Check scrape history
-                    if (!config.ForceRescrape && _cache.IsScraped(romFile))
+                    // Check what work is needed for this game
+                    var (needsApiCall, hasRetryableErrors) = config.ForceRescrape
+                        ? (true, false)
+                        : CheckGameStatus(romFile, system.Name, baseName, config);
+
+                    if (!needsApiCall && !hasRetryableErrors)
                     {
                         p.Skipped++;
                         p.CompletedGames++;
@@ -130,70 +134,100 @@ public class ScrapeOrchestrator
                         continue;
                     }
 
-                    // Calculate hashes
-                    var hashes = await _hashService.GetHashes(romFile, ct);
-
-                    // Check not-found cache (confirmed not in ScreenScraper DB)
-                    if (!config.ForceRescrape && _cache.IsNotFound(hashes.Md5, system.ScreenScraperId))
+                    // Phase 1: Retry failed media downloads from cached URLs (no API call needed)
+                    if (hasRetryableErrors)
                     {
-                        p.Skipped++;
-                        p.CompletedGames++;
-                        p.CompletedGamesAllSystems++;
-                        progress.Report(p);
-                        continue;
+                        var retried = await _mediaService.RetryFailedMedia(
+                            romFile, baseName, system.Name, config, _cache, log, ct);
+                        p.MediaDownloaded += retried;
                     }
 
-                    // Check error cache (previous API/network error — skip unless retrying errors)
-                    if (!config.ForceRescrape && _cache.IsErrorCached(hashes.Md5, system.ScreenScraperId))
+                    // Phase 2: If we need an API call (new metadata or new media types)
+                    if (needsApiCall)
                     {
-                        p.Skipped++;
-                        p.CompletedGames++;
-                        p.CompletedGamesAllSystems++;
-                        progress.Report(p);
-                        continue;
+                        // Calculate hashes
+                        var hashes = await _hashService.GetHashes(romFile, ct);
+
+                        // Check not-found cache (game confirmed not in ScreenScraper DB)
+                        if (!config.ForceRescrape && _cache.IsNotFound(hashes.Md5, system.ScreenScraperId))
+                        {
+                            // Game not in DB — mark all uncached media types as not_available
+                            var enabledTypes = config.GetEnabledMediaTypes(system.Name);
+                            foreach (var mt in enabledTypes)
+                            {
+                                var cached = _cache.GetMediaStatus(romFile, mt.ToString());
+                                if (cached == null)
+                                    _cache.SetMediaStatus(romFile, mt.ToString(), "not_available");
+                            }
+                            p.Skipped++;
+                            p.CompletedGames++;
+                            p.CompletedGamesAllSystems++;
+                            progress.Report(p);
+                            continue;
+                        }
+
+                        // Check error cache (previous API/network error — skip)
+                        if (!config.ForceRescrape && _cache.IsErrorCached(hashes.Md5, system.ScreenScraperId))
+                        {
+                            p.Skipped++;
+                            p.CompletedGames++;
+                            p.CompletedGamesAllSystems++;
+                            progress.Report(p);
+                            continue;
+                        }
+
+                        // Query API
+                        var result = await _api.ScrapeGame(
+                            system.ScreenScraperId.ToString(),
+                            hashes.Md5, hashes.Sha1, hashes.Crc,
+                            fileName, hashes.FileSize.ToString(),
+                            config, ct);
+
+                        switch (result.Status)
+                        {
+                            case ScrapeStatus.Success when result.Game != null:
+                                result.Game.FilePath = romFile;
+                                result.Game.FileName = fileName;
+                                result.Game.FileBaseName = baseName;
+                                result.Game.SystemName = system.Name;
+
+                                // Download media (tracks per-type status in cache)
+                                var mediaCount = await _mediaService.DownloadMedia(
+                                    result.Game, system.Name, config, _cache, log, ct);
+                                p.MediaDownloaded += mediaCount;
+
+                                // Update gamelist (only if metadata scraping is enabled)
+                                if (config.ScrapeMetadata)
+                                    _gamelistService.UpdateGamelist(system.Name, result.Game, config);
+
+                                // Record in history
+                                _cache.AddScrapeHistory(romFile, system.Name, result.Game.ScreenScraperId);
+
+                                p.Scraped++;
+                                log($"  [{fileName}] -> {result.Game.Name} ({mediaCount} media files)");
+                                break;
+
+                            case ScrapeStatus.NotFound:
+                                _cache.AddNotFound(hashes.Md5, system.ScreenScraperId, fileName);
+                                // Mark all uncached media types as not_available
+                                var types = config.GetEnabledMediaTypes(system.Name);
+                                foreach (var mt in types)
+                                    _cache.SetMediaStatus(romFile, mt.ToString(), "not_available");
+                                p.NotFound++;
+                                log($"  [{fileName}] Not found on ScreenScraper");
+                                break;
+
+                            default:
+                                _cache.AddError(hashes.Md5, system.ScreenScraperId, fileName, result.Message);
+                                p.Errors++;
+                                log($"  [{fileName}] Error: {result.Message}");
+                                break;
+                        }
                     }
-
-                    // Query API
-                    var result = await _api.ScrapeGame(
-                        system.ScreenScraperId.ToString(),
-                        hashes.Md5, hashes.Sha1, hashes.Crc,
-                        fileName, hashes.FileSize.ToString(),
-                        config, ct);
-
-                    switch (result.Status)
+                    else
                     {
-                        case ScrapeStatus.Success when result.Game != null:
-                            result.Game.FilePath = romFile;
-                            result.Game.FileName = fileName;
-                            result.Game.FileBaseName = baseName;
-                            result.Game.SystemName = system.Name;
-
-                            // Download media
-                            var mediaCount = await _mediaService.DownloadMedia(
-                                result.Game, system.Name, config, log, ct);
-                            p.MediaDownloaded += mediaCount;
-
-                            // Update gamelist
-                            _gamelistService.UpdateGamelist(system.Name, result.Game, config);
-
-                            // Record in history
-                            _cache.AddScrapeHistory(romFile, system.Name, result.Game.ScreenScraperId);
-
-                            p.Scraped++;
-                            log($"  [{fileName}] -> {result.Game.Name} ({mediaCount} media files)");
-                            break;
-
-                        case ScrapeStatus.NotFound:
-                            _cache.AddNotFound(hashes.Md5, system.ScreenScraperId, fileName);
-                            p.NotFound++;
-                            log($"  [{fileName}] Not found on ScreenScraper");
-                            break;
-
-                        default:
-                            _cache.AddError(hashes.Md5, system.ScreenScraperId, fileName, result.Message);
-                            p.Errors++;
-                            log($"  [{fileName}] Error: {result.Message}");
-                            break;
+                        // Only had retryable errors, no API call needed
+                        p.Skipped++;
                     }
                 }
                 catch (OperationCanceledException) { throw; }
@@ -221,13 +255,100 @@ public class ScrapeOrchestrator
         log($"Scrape complete! Scraped: {p.Scraped}, Not found: {p.NotFound}, Errors: {p.Errors}, Skipped: {p.Skipped}");
     }
 
+    /// <summary>
+    /// Checks what work is needed for a game.
+    /// Returns (needsApiCall, hasRetryableErrors).
+    /// needsApiCall = true if metadata or new media types are missing (no cached URL).
+    /// hasRetryableErrors = true if some media types failed but have cached URLs for retry.
+    /// Both false = game is fully handled, skip it.
+    /// </summary>
+    private (bool needsApiCall, bool hasRetryableErrors) CheckGameStatus(
+        string filePath, string systemName, string baseName, ScraperConfig config)
+    {
+        var needsApi = false;
+        var hasErrors = false;
+
+        // Check metadata — look for a gamelist entry with a name
+        if (config.ScrapeMetadata)
+        {
+            var gamelistPath = _frontend.GetGamelistPath(systemName);
+            if (!File.Exists(gamelistPath))
+            {
+                needsApi = true;
+            }
+            else
+            {
+                try
+                {
+                    var doc = System.Xml.Linq.XDocument.Load(gamelistPath);
+                    var hasEntry = doc.Descendants("game")
+                        .Any(g =>
+                        {
+                            var path = g.Element("path")?.Value ?? "";
+                            var entryBase = Path.GetFileNameWithoutExtension(path);
+                            return entryBase.Equals(baseName, StringComparison.OrdinalIgnoreCase);
+                        });
+                    if (!hasEntry)
+                        needsApi = true;
+                }
+                catch
+                {
+                    needsApi = true;
+                }
+            }
+        }
+
+        // Check each enabled media type
+        var enabledTypes = config.GetEnabledMediaTypes(systemName);
+        foreach (var mediaType in enabledTypes)
+        {
+            // First check if file already exists on disk
+            var mediaBasePath = _frontend.GetMediaPath(systemName, mediaType, baseName);
+            var dir = Path.GetDirectoryName(mediaBasePath);
+            var fileNameNoExt = Path.GetFileName(mediaBasePath);
+
+            if (dir != null && Directory.Exists(dir) &&
+                Directory.EnumerateFiles(dir, fileNameNoExt + ".*").Any())
+                continue; // File exists, this type is done
+
+            // No file on disk — check cache
+            var cached = _cache.GetMediaStatus(filePath, mediaType.ToString());
+            if (cached == null)
+            {
+                // No cache entry = never tried this type (new media type added, or first run)
+                needsApi = true;
+            }
+            else if (cached.Value.status == "not_available")
+            {
+                // API confirmed no URL for this type — skip
+                continue;
+            }
+            else if (cached.Value.status == "error")
+            {
+                // Failed download with cached URL — can retry without API
+                hasErrors = true;
+            }
+            else if (cached.Value.status == "downloaded")
+            {
+                // Cache says downloaded but file is missing — need to re-download
+                // If we have a cached URL, retry from cache; otherwise need API
+                if (!string.IsNullOrEmpty(cached.Value.url))
+                    hasErrors = true;
+                else
+                    needsApi = true;
+            }
+        }
+
+        return (needsApi, hasErrors);
+    }
+
     private static List<string> GetRomFiles(EmulationSystem system)
     {
         if (!Directory.Exists(system.RomPath))
             return [];
 
         var extSet = new HashSet<string>(system.Extensions, StringComparer.OrdinalIgnoreCase);
-        return Directory.EnumerateFiles(system.RomPath, "*", SearchOption.TopDirectoryOnly)
+        return Directory.EnumerateFiles(system.RomPath, "*", SearchOption.AllDirectories)
             .Where(f => extSet.Contains(Path.GetExtension(f)))
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();

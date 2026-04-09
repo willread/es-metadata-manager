@@ -25,6 +25,7 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly ScraperConfig _config;
     private Action? _stopScrapeAction;
+    private Action? _switchToScrapeAction;
 
     [ObservableProperty]
     private FrontendType _frontendType;
@@ -40,6 +41,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _screenScraperPassword = "";
+
+    [ObservableProperty]
+    private bool _scrapeMetadata = true;
 
     [ObservableProperty]
     private bool _forceRescrape;
@@ -69,6 +73,7 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     public void SetStopScrapeAction(Action action) => _stopScrapeAction = action;
+    public void SetSwitchToScrapeAction(Action action) => _switchToScrapeAction = action;
 
     private void LoadFromConfig()
     {
@@ -76,6 +81,7 @@ public partial class SettingsViewModel : ObservableObject
         ConfigPath = _config.ConfigPath;
         ScreenScraperUser = _config.ScreenScraperUser;
         ScreenScraperPassword = _config.ScreenScraperPassword;
+        ScrapeMetadata = _config.ScrapeMetadata;
         ForceRescrape = _config.ForceRescrape;
         ForceRedownloadMedia = _config.ForceRedownloadMedia;
         PreferredRegion = _config.PreferredRegion;
@@ -123,6 +129,7 @@ public partial class SettingsViewModel : ObservableObject
         _config.ConfigPath = ConfigPath;
         _config.ScreenScraperUser = ScreenScraperUser;
         _config.ScreenScraperPassword = ScreenScraperPassword;
+        _config.ScrapeMetadata = ScrapeMetadata;
         _config.ForceRescrape = ForceRescrape;
         _config.ForceRedownloadMedia = ForceRedownloadMedia;
         _config.PreferredRegion = PreferredRegion;
@@ -138,7 +145,7 @@ public partial class SettingsViewModel : ObservableObject
 
         _config.Save();
         RefreshDetectedPaths();
-        StatusMessage = "Settings saved!";
+        _switchToScrapeAction?.Invoke();
     }
 
     [RelayCommand]

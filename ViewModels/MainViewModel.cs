@@ -21,7 +21,10 @@ public partial class MainViewModel : ObservableObject
     private bool _isLoaded;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotScraping))]
     private bool _isScraping;
+
+    public bool NotScraping => !IsScraping;
 
     [ObservableProperty]
     private string _systemFilter = "";
@@ -62,6 +65,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private int _errorCacheCount;
+
+    [ObservableProperty]
+    private int _mediaErrorCount;
 
     public ObservableCollection<SystemViewModel> AllSystems { get; } = [];
     public ObservableCollection<SystemViewModel> FilteredSystems { get; } = [];
@@ -112,7 +118,7 @@ public partial class MainViewModel : ObservableObject
                 if (system.RomCount == 0)
                     continue;
 
-                var scrapedCount = _cache.GetScrapedCount(system.Name);
+                var completeCount = mediaService.CountCompleteGames(system, _config, _cache);
 
                 Dictionary<MediaType, int>? mediaStatus = null;
                 if (!string.IsNullOrEmpty(_frontend.MediaDirectory))
@@ -121,13 +127,14 @@ public partial class MainViewModel : ObservableObject
                     catch { }
                 }
 
-                var vm = new SystemViewModel(system, _config, scrapedCount, mediaStatus);
+                var vm = new SystemViewModel(system, _config, completeCount, mediaStatus);
                 AllSystems.Add(vm);
             }
 
             ApplyFilter();
             NotFoundCacheCount = _cache.GetNotFoundCount();
             ErrorCacheCount = _cache.GetErrorCacheCount();
+            MediaErrorCount = _cache.GetMediaErrorCount();
             IsLoaded = true;
             Log.Log($"Loaded {AllSystems.Count} systems from {_config.FrontendType}");
         }
@@ -245,6 +252,7 @@ public partial class MainViewModel : ObservableObject
             IsScraping = false;
             NotFoundCacheCount = _cache.GetNotFoundCount();
             ErrorCacheCount = _cache.GetErrorCacheCount();
+            MediaErrorCount = _cache.GetMediaErrorCount();
         }
     }
 
@@ -268,6 +276,14 @@ public partial class MainViewModel : ObservableObject
         _cache?.ClearErrors();
         ErrorCacheCount = 0;
         Log.Log("Error cache cleared — errored games will be retried on next scrape");
+    }
+
+    [RelayCommand]
+    private void ClearMediaErrors()
+    {
+        _cache?.ClearMediaErrors();
+        MediaErrorCount = 0;
+        Log.Log("Media error cache cleared — failed downloads will be retried on next scrape");
     }
 
     [RelayCommand]
