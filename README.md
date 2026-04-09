@@ -1,6 +1,8 @@
 # ES Metadata Manager
 
-A robust ROM metadata and media manager for [ES-DE](https://es-de.org) and classic EmulationStation.
+A simple, robust ROM metadata and media manager for [ES-DE](https://es-de.org) and classic EmulationStation.
+
+<img width="1660" height="1215" alt="image" src="https://github.com/user-attachments/assets/53c4459d-7ca8-4d87-9b9e-2f91a4cfd0d9" />
 
 ## Download
 
