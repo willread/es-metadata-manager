@@ -2,7 +2,7 @@
 
 A simple, robust ROM metadata and media manager for [ES-DE](https://es-de.org) and classic EmulationStation.
 
-<img width="1660" height="1215" alt="image" src="https://github.com/user-attachments/assets/53c4459d-7ca8-4d87-9b9e-2f91a4cfd0d9" />
+<img width="1660" height="1215" alt="image" src="https://github.com/user-attachments/assets/30a82639-469a-41d0-82d1-272a1fdb5f1d" />
 
 ## Download
 
