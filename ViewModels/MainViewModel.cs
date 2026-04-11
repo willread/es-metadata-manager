@@ -16,6 +16,7 @@ public partial class MainViewModel : ObservableObject
     // Services (created after config is loaded)
     private CacheDatabase? _cache;
     private FrontendConfigService? _frontend;
+    private Dictionary<string, int> _initialCompleteCounts = new();
 
     [ObservableProperty]
     private bool _isLoaded;
@@ -94,11 +95,11 @@ public partial class MainViewModel : ObservableObject
 
         // Auto-load systems if we have a config path
         if (!string.IsNullOrEmpty(_config.ConfigPath))
-            LoadSystems();
+            _ = LoadSystemsAsync();
     }
 
     [RelayCommand]
-    private void LoadSystems()
+    private async Task LoadSystemsAsync()
     {
         try
         {
@@ -112,31 +113,37 @@ public partial class MainViewModel : ObservableObject
 
             var mediaService = new MediaDownloadService(new HttpClient(), _frontend);
 
+            // Phase 1: Show all systems immediately with 0 counts
             foreach (var system in _frontend.Systems)
             {
-                // Skip systems with no ROMs
                 if (system.RomCount == 0)
                     continue;
 
-                var completeCount = mediaService.CountCompleteGames(system, _config, _cache);
-
-                Dictionary<MediaType, int>? mediaStatus = null;
-                if (!string.IsNullOrEmpty(_frontend.MediaDirectory))
-                {
-                    try { mediaStatus = mediaService.GetMediaStatus(system.Name); }
-                    catch { }
-                }
-
-                var vm = new SystemViewModel(system, _config, completeCount, mediaStatus);
+                var vm = new SystemViewModel(system, _config, 0, null);
                 AllSystems.Add(vm);
             }
 
             ApplyFilter();
+            IsLoaded = true;
+            Log.Log($"Loaded {AllSystems.Count} systems from {_config.FrontendType}");
+
+            // Phase 2: Calculate complete counts in background, update as they finish
+            var cache = _cache;
+            var config = _config;
+            var systemList = AllSystems.ToList();
+
+            await Task.Run(() =>
+            {
+                foreach (var svm in systemList)
+                {
+                    var count = mediaService.CountCompleteGames(svm.System, config, cache);
+                    _dispatcher.BeginInvoke(() => svm.CompleteCount = count);
+                }
+            });
+
             NotFoundCacheCount = _cache.GetNotFoundCount();
             ErrorCacheCount = _cache.GetErrorCacheCount();
             MediaErrorCount = _cache.GetMediaErrorCount();
-            IsLoaded = true;
-            Log.Log($"Loaded {AllSystems.Count} systems from {_config.FrontendType}");
         }
         catch (Exception ex)
         {
@@ -201,6 +208,7 @@ public partial class MainViewModel : ObservableObject
         IsScraping = true;
         _cts = new CancellationTokenSource();
         ResetStats();
+        _initialCompleteCounts = AllSystems.ToDictionary(s => s.Name, s => s.CompleteCount);
 
         try
         {
@@ -232,6 +240,13 @@ public partial class MainViewModel : ObservableObject
                     : p.RequestsMadeToday > 0
                         ? $"API: {p.RequestsMadeToday:N0} calls"
                         : "";
+
+                foreach (var (sysName, newlyCompleted) in p.CompletedPerSystem)
+                {
+                    var sys = AllSystems.FirstOrDefault(s => s.Name == sysName);
+                    if (sys != null)
+                        sys.CompleteCount = _initialCompleteCounts.GetValueOrDefault(sysName) + newlyCompleted;
+                }
             });
 
             await Task.Run(() => orchestrator.Scrape(
@@ -253,6 +268,7 @@ public partial class MainViewModel : ObservableObject
             NotFoundCacheCount = _cache.GetNotFoundCount();
             ErrorCacheCount = _cache.GetErrorCacheCount();
             MediaErrorCount = _cache.GetMediaErrorCount();
+            await RefreshSystemCountsAsync();
         }
     }
 
@@ -303,6 +319,21 @@ public partial class MainViewModel : ObservableObject
         }
 
         Settings.StatusMessage = $"Cleanup complete: {totalDeleted} files deleted";
+    }
+
+    private async Task RefreshSystemCountsAsync()
+    {
+        if (_cache == null || _frontend == null) return;
+        var mediaService = new MediaDownloadService(new HttpClient(), _frontend);
+        var systemList = AllSystems.ToList();
+        await Task.Run(() =>
+        {
+            foreach (var sys in systemList)
+            {
+                var count = mediaService.CountCompleteGames(sys.System, _config, _cache);
+                _dispatcher.BeginInvoke(() => sys.CompleteCount = count);
+            }
+        });
     }
 
     private void ResetStats()

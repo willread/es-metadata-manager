@@ -5,6 +5,7 @@ namespace GamelistScraper.Services;
 public class ScrapeProgress
 {
     public string CurrentSystem { get; set; } = "";
+    public string CurrentSystemName { get; set; } = "";
     public string CurrentGame { get; set; } = "";
     public int TotalSystems { get; set; }
     public int CompletedSystems { get; set; }
@@ -20,6 +21,9 @@ public class ScrapeProgress
     public int RequestsMadeToday { get; set; }
     public int RemainingRequests { get; set; } = -1;
     public int MaxRequestsPerDay { get; set; } = -1;
+
+    /// <summary>Per-system count of games that became complete during this scrape.</summary>
+    public Dictionary<string, int> CompletedPerSystem { get; } = new();
 }
 
 public class ScrapeOrchestrator
@@ -88,6 +92,7 @@ public class ScrapeOrchestrator
             ct.ThrowIfCancellationRequested();
 
             p.CurrentSystem = system.FullName;
+            p.CurrentSystemName = system.Name;
             p.CompletedGames = 0;
             progress.Report(p);
 
@@ -109,6 +114,26 @@ public class ScrapeOrchestrator
             p.TotalGames = romFiles.Count;
             log($"[{system.FullName}] Found {romFiles.Count} ROM(s)");
 
+            // Pre-load gamelist entries for this system (parse XML once, not per-game)
+            HashSet<string>? gamelistEntries = null;
+            if (config.ScrapeMetadata)
+            {
+                var glPath = _frontend.GetGamelistPath(system.Name);
+                if (File.Exists(glPath))
+                {
+                    try
+                    {
+                        var (_, gl) = GamelistService.LoadGamelistXml(glPath);
+                        gamelistEntries = new HashSet<string>(
+                            gl.Elements("game")
+                                .Select(g => Path.GetFileNameWithoutExtension(g.Element("path")?.Value ?? ""))
+                                .Where(n => !string.IsNullOrEmpty(n)),
+                            StringComparer.OrdinalIgnoreCase);
+                    }
+                    catch { }
+                }
+            }
+
             foreach (var romFile in romFiles)
             {
                 ct.ThrowIfCancellationRequested();
@@ -123,7 +148,7 @@ public class ScrapeOrchestrator
                     // Check what work is needed for this game
                     var (needsApiCall, hasRetryableErrors) = config.ForceRescrape
                         ? (true, false)
-                        : CheckGameStatus(romFile, system.Name, baseName, config);
+                        : CheckGameStatus(romFile, system.Name, baseName, config, gamelistEntries);
 
                     if (!needsApiCall && !hasRetryableErrors)
                     {
@@ -198,13 +223,17 @@ public class ScrapeOrchestrator
 
                                 // Update gamelist (only if metadata scraping is enabled)
                                 if (config.ScrapeMetadata)
+                                {
                                     _gamelistService.UpdateGamelist(system.Name, result.Game, config);
+                                    gamelistEntries?.Add(baseName);
+                                }
 
                                 // Record in history
                                 _cache.AddScrapeHistory(romFile, system.Name, result.Game.ScreenScraperId);
 
                                 p.Scraped++;
-                                log($"  [{fileName}] -> {result.Game.Name} ({mediaCount} media files)");
+                                p.CompletedPerSystem[system.Name] = p.CompletedPerSystem.GetValueOrDefault(system.Name) + 1;
+                                log($"[{system.Name}] {fileName} -> {result.Game.Name} ({mediaCount} media)");
                                 break;
 
                             case ScrapeStatus.NotFound:
@@ -214,13 +243,22 @@ public class ScrapeOrchestrator
                                 foreach (var mt in types)
                                     _cache.SetMediaStatus(romFile, mt.ToString(), "not_available");
                                 p.NotFound++;
-                                log($"  [{fileName}] Not found on ScreenScraper");
+                                p.CompletedPerSystem[system.Name] = p.CompletedPerSystem.GetValueOrDefault(system.Name) + 1;
+                                log($"[{system.Name}] {fileName} — Not found");
                                 break;
+
+                            case ScrapeStatus.QuotaExceeded:
+                                log($"API quota exceeded — stopping scrape. {result.Message}");
+                                p.CompletedGames++;
+                                p.CompletedGamesAllSystems++;
+                                progress.Report(p);
+                                log($"Scrape stopped. Scraped: {p.Scraped}, Not found: {p.NotFound}, Errors: {p.Errors}, Skipped: {p.Skipped}");
+                                return;
 
                             default:
                                 _cache.AddError(hashes.Md5, system.ScreenScraperId, fileName, result.Message);
                                 p.Errors++;
-                                log($"  [{fileName}] Error: {result.Message}");
+                                log($"[{system.Name}] {fileName} — Error: {result.Message}");
                                 break;
                         }
                     }
@@ -234,7 +272,7 @@ public class ScrapeOrchestrator
                 catch (Exception ex)
                 {
                     p.Errors++;
-                    log($"  [{fileName}] Unexpected error: {ex.Message}");
+                    log($"[{system.Name}] {fileName} — Unexpected error: {ex.Message}");
                 }
 
                 // Update quota info
@@ -263,7 +301,8 @@ public class ScrapeOrchestrator
     /// Both false = game is fully handled, skip it.
     /// </summary>
     private (bool needsApiCall, bool hasRetryableErrors) CheckGameStatus(
-        string filePath, string systemName, string baseName, ScraperConfig config)
+        string filePath, string systemName, string baseName, ScraperConfig config,
+        HashSet<string>? gamelistEntries)
     {
         var needsApi = false;
         var hasErrors = false;
@@ -271,35 +310,14 @@ public class ScrapeOrchestrator
         // Check metadata — look for a gamelist entry with a name
         if (config.ScrapeMetadata)
         {
-            var gamelistPath = _frontend.GetGamelistPath(systemName);
-            if (!File.Exists(gamelistPath))
-            {
+            if (gamelistEntries == null || !gamelistEntries.Contains(baseName))
                 needsApi = true;
-            }
-            else
-            {
-                try
-                {
-                    var doc = System.Xml.Linq.XDocument.Load(gamelistPath);
-                    var hasEntry = doc.Descendants("game")
-                        .Any(g =>
-                        {
-                            var path = g.Element("path")?.Value ?? "";
-                            var entryBase = Path.GetFileNameWithoutExtension(path);
-                            return entryBase.Equals(baseName, StringComparison.OrdinalIgnoreCase);
-                        });
-                    if (!hasEntry)
-                        needsApi = true;
-                }
-                catch
-                {
-                    needsApi = true;
-                }
-            }
         }
 
         // Check each enabled media type
         var enabledTypes = config.GetEnabledMediaTypes(systemName);
+        var wasScraped = _cache.IsScraped(filePath);
+
         foreach (var mediaType in enabledTypes)
         {
             // First check if file already exists on disk
@@ -315,7 +333,11 @@ public class ScrapeOrchestrator
             var cached = _cache.GetMediaStatus(filePath, mediaType.ToString());
             if (cached == null)
             {
-                // No cache entry = never tried this type (new media type added, or first run)
+                // No cache entry — if previously scraped, assume not_available
+                // (scraped before per-media tracking existed)
+                if (wasScraped)
+                    continue;
+                // Otherwise never tried this type
                 needsApi = true;
             }
             else if (cached.Value.status == "not_available")

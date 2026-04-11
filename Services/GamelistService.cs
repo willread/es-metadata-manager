@@ -19,42 +19,16 @@ public class GamelistService
         Directory.CreateDirectory(dir);
 
         XDocument doc;
-        XElement? root;
+        XElement root;
 
         if (File.Exists(gamelistPath))
         {
-            doc = XDocument.Load(gamelistPath);
-            root = doc.Element("gameList");
-            if (root == null)
-            {
-                // File might have <alternativeEmulator> before <gameList />
-                root = new XElement("gameList");
-                doc.Root?.AddAfterSelf(root);
-                if (doc.Root?.Name == "alternativeEmulator")
-                {
-                    // Restructure: keep alternativeEmulator, add gameList after
-                }
-                else
-                {
-                    doc = new XDocument(root);
-                }
-            }
+            (doc, root) = LoadGamelistXml(gamelistPath);
         }
         else
         {
             root = new XElement("gameList");
             doc = new XDocument(new XDeclaration("1.0", "utf-8", null), root);
-        }
-
-        // Reload if needed - handle the case where root is actually the document element
-        root = doc.Descendants("gameList").FirstOrDefault();
-        if (root == null)
-        {
-            root = new XElement("gameList");
-            if (doc.Root != null)
-                doc.Root.Add(root);
-            else
-                doc.Add(root);
         }
 
         // Build relative path for <path> element
@@ -75,7 +49,10 @@ public class GamelistService
             root.Add(gameElement);
         }
 
-        doc.Save(gamelistPath);
+        // Atomic save: write to temp file, then replace
+        var tmpPath = gamelistPath + ".tmp";
+        doc.Save(tmpPath);
+        File.Move(tmpPath, gamelistPath, overwrite: true);
     }
 
     private XElement CreateGameElement(GameEntry game, ScraperConfig config, string systemName, string relativePath)
@@ -132,6 +109,60 @@ public class GamelistService
             if (!relative.StartsWith("./") && !relative.StartsWith("../"))
                 relative = "./" + relative;
             SetChildValue(el, xmlElement, relative);
+        }
+    }
+
+    /// <summary>
+    /// Loads a gamelist.xml that may have multiple root elements (e.g. alternativeEmulator + gameList).
+    /// ES-DE writes files like this which aren't strictly valid XML.
+    /// </summary>
+    internal static (XDocument doc, XElement gameList) LoadGamelistXml(string path)
+    {
+        try
+        {
+            var doc = XDocument.Load(path);
+            var root = doc.Descendants("gameList").FirstOrDefault();
+            if (root != null)
+                return (doc, root);
+
+            // No gameList element — create one
+            root = new XElement("gameList");
+            if (doc.Root != null)
+                doc.Root.Add(root);
+            else
+                doc.Add(root);
+            return (doc, root);
+        }
+        catch (System.Xml.XmlException)
+        {
+            // Multiple root elements (e.g. <alternativeEmulator> + <gameList>) —
+            // use fragment reader to parse each top-level element individually
+            XElement? gameList = null;
+            try
+            {
+                var settings = new System.Xml.XmlReaderSettings
+                {
+                    ConformanceLevel = System.Xml.ConformanceLevel.Fragment
+                };
+
+                using var reader = System.Xml.XmlReader.Create(path, settings);
+                while (reader.Read())
+                {
+                    if (reader.NodeType == System.Xml.XmlNodeType.Element)
+                    {
+                        var el = XElement.Load(reader.ReadSubtree());
+                        if (el.Name.LocalName == "gameList")
+                            gameList = el;
+                    }
+                }
+            }
+            catch { }
+
+            if (gameList == null)
+                gameList = new XElement("gameList");
+
+            var newDoc = new XDocument(new XDeclaration("1.0", "utf-8", null), new XElement(gameList));
+            return (newDoc, newDoc.Root!);
         }
     }
 

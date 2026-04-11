@@ -52,7 +52,7 @@ public class MediaDownloadService
                 {
                     var err = $"HTTP {(int)response.StatusCode}";
                     cache.SetMediaStatus(game.FilePath, mediaType.ToString(), "error", url, err);
-                    log($"  [{MediaTypeInfo.DisplayName(mediaType)}] Download failed: {err}");
+                    log($"  {MediaTypeInfo.DisplayName(mediaType)} — failed: {err}");
                     continue;
                 }
 
@@ -60,13 +60,13 @@ public class MediaDownloadService
                 await response.Content.CopyToAsync(fileStream, ct);
                 cache.SetMediaStatus(game.FilePath, mediaType.ToString(), "downloaded", url);
                 downloaded++;
-                log($"  [{MediaTypeInfo.DisplayName(mediaType)}] Downloaded");
+                log($"  {MediaTypeInfo.DisplayName(mediaType)} downloaded");
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 cache.SetMediaStatus(game.FilePath, mediaType.ToString(), "error", url, ex.Message);
-                log($"  [{MediaTypeInfo.DisplayName(mediaType)}] Error: {ex.Message}");
+                log($"  {MediaTypeInfo.DisplayName(mediaType)} — error: {ex.Message}");
             }
         }
 
@@ -116,7 +116,7 @@ public class MediaDownloadService
                 {
                     var err = $"HTTP {(int)response.StatusCode}";
                     cache.SetMediaStatus(filePath, mediaTypeStr, "error", url, err);
-                    log($"  [{MediaTypeInfo.DisplayName(mediaType)}] Retry failed: {err}");
+                    log($"  {MediaTypeInfo.DisplayName(mediaType)} — retry failed: {err}");
                     continue;
                 }
 
@@ -124,13 +124,13 @@ public class MediaDownloadService
                 await response.Content.CopyToAsync(fileStream, ct);
                 cache.SetMediaStatus(filePath, mediaTypeStr, "downloaded", url);
                 downloaded++;
-                log($"  [{MediaTypeInfo.DisplayName(mediaType)}] Downloaded (retry)");
+                log($"  {MediaTypeInfo.DisplayName(mediaType)} downloaded (retry)");
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 cache.SetMediaStatus(filePath, mediaTypeStr, "error", url, ex.Message);
-                log($"  [{MediaTypeInfo.DisplayName(mediaType)}] Retry error: {ex.Message}");
+                log($"  {MediaTypeInfo.DisplayName(mediaType)} — retry error: {ex.Message}");
             }
         }
 
@@ -208,13 +208,13 @@ public class MediaDownloadService
     /// (every enabled media type either exists on disk or is cached as not_available).
     /// </summary>
     public int CountCompleteGames(EmulationSystem system, ScraperConfig config,
-        CacheDatabase cache, GamelistService? gamelistService = null)
+        CacheDatabase cache)
     {
         if (!Directory.Exists(system.RomPath))
             return 0;
 
         var extSet = new HashSet<string>(system.Extensions, StringComparer.OrdinalIgnoreCase);
-        var romFiles = Directory.EnumerateFiles(system.RomPath, "*", SearchOption.TopDirectoryOnly)
+        var romFiles = Directory.EnumerateFiles(system.RomPath, "*", SearchOption.AllDirectories)
             .Where(f => extSet.Contains(Path.GetExtension(f)));
 
         var enabledTypes = config.GetEnabledMediaTypes(system.Name);
@@ -229,9 +229,9 @@ public class MediaDownloadService
             {
                 try
                 {
-                    var doc = System.Xml.Linq.XDocument.Load(gamelistPath);
+                    var (_, gameList) = GamelistService.LoadGamelistXml(gamelistPath);
                     gamelistEntries = new HashSet<string>(
-                        doc.Descendants("game")
+                        gameList.Elements("game")
                             .Select(g => Path.GetFileNameWithoutExtension(g.Element("path")?.Value ?? ""))
                             .Where(n => !string.IsNullOrEmpty(n)),
                         StringComparer.OrdinalIgnoreCase);
@@ -254,6 +254,10 @@ public class MediaDownloadService
             // Check each enabled media type
             if (isComplete)
             {
+                // If game was previously scraped (in history), treat missing cache entries
+                // as not_available — the API was already queried and had nothing for that type
+                var wasScraped = cache.IsScraped(romFile);
+
                 foreach (var mediaType in enabledTypes)
                 {
                     var mediaBasePath = _frontend.GetMediaPath(system.Name, mediaType, baseName);
@@ -265,9 +269,14 @@ public class MediaDownloadService
                         Directory.EnumerateFiles(dir, fileNameNoExt + ".*").Any())
                         continue;
 
-                    // Check cache — only "not_available" counts as complete
+                    // Check cache
                     var cached = cache.GetMediaStatus(romFile, mediaType.ToString());
                     if (cached?.status == "not_available")
+                        continue;
+
+                    // If previously scraped and no cache entry, treat as not_available
+                    // (scraped before per-media tracking existed)
+                    if (wasScraped && cached == null)
                         continue;
 
                     isComplete = false;

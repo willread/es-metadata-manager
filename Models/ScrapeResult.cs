@@ -5,6 +5,7 @@ public enum ScrapeStatus
     Success,
     NotFound,
     Error,
+    QuotaExceeded,
     Skipped,
     Cached
 }

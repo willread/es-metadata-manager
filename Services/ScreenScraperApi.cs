@@ -84,7 +84,7 @@ public class ScreenScraperApi : IDisposable
                     response.StatusCode == (HttpStatusCode)430) // SS custom throttle
                 {
                     if (attempt == MaxRetries)
-                        return (null, "Rate limited by ScreenScraper after maximum retries.");
+                        return (null, "QUOTA_EXCEEDED:Rate limited by ScreenScraper after maximum retries.");
 
                     await Task.Delay(backoffMs, ct).ConfigureAwait(false);
                     backoffMs *= 2;
@@ -96,10 +96,10 @@ public class ScreenScraperApi : IDisposable
                 {
                     var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
                     if (body.Contains("\"ssuser\"") == false &&
-                        body.Contains("API closed") || body.Contains("Erreur") && body.Contains("maximum"))
+                        (body.Contains("API closed") || (body.Contains("Erreur") && body.Contains("maximum"))))
                     {
                         if (attempt == MaxRetries)
-                            return (null, "ScreenScraper API throttled after maximum retries.");
+                            return (null, "QUOTA_EXCEEDED:ScreenScraper API quota exceeded.");
 
                         await Task.Delay(backoffMs, ct).ConfigureAwait(false);
                         backoffMs *= 2;
@@ -230,7 +230,11 @@ public class ScreenScraperApi : IDisposable
             }
 
             if (error != null)
+            {
+                if (error.StartsWith("QUOTA_EXCEEDED:"))
+                    return new ScrapeResult { Status = ScrapeStatus.QuotaExceeded, Message = error[15..] };
                 return new ScrapeResult { Status = ScrapeStatus.Error, Message = error };
+            }
 
             if (response == null)
                 return new ScrapeResult { Status = ScrapeStatus.Error, Message = "No response received." };
